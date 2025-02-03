@@ -1,0 +1,34 @@
+{
+  "baseToken": {
+    "address": "11111p2xtUKbKBw6mYUnDBkYLxww2ifzgdKKfxiaS",
+    "symbol": "UNKNOWN",
+    "decimals": 9,
+    "metadata": {
+      "name": "Unknown Token (11111p2x...)",
+      "symbol": "UNKNOWN",
+      "uri": "",
+      "description": "Token information unavailable"
+    }
+  },
+  "quoteToken": {
+    "address": "11111ZyjxmM7ntJgYrkuo5vop4g4FgxHumspnhpwfc",
+    "symbol": "UNKNOWN",
+    "decimals": 9,
+    "metadata": {
+      "name": "Unknown Token (11111Zyj...)",
+      "symbol": "UNKNOWN",
+      "uri": "",
+      "description": "Token information unavailable"
+    }
+  },
+  "baseTokenAddress": "11111p2xtUKbKBw6mYUnDBkYLxww2ifzgdKKfxiaS",
+  "quoteTokenAddress": "11111ZyjxmM7ntJgYrkuo5vop4g4FgxHumspnhpwfc",
+  "lpTokenAddress": "111118qfKFDmPNA23d2NcMfvqmcNTpvgW4h9x6tr3",
+  "baseVault": "111113BcqPNhoJmv38M21RgzvwYwHY6p9xDBTTYfLb",
+  "quoteVault": "11111EWu4TX1XZUYdcEE6Xe8hPgYDN1LXacJS5xjPM",
+  "authority": "8opHzTUXRwGdhYcXoRFuuZiAwv2WeNnSNCrzrSJHRHH",
+  "nonce": 0,
+  "openTime": "0",
+  "lpSupply": "0",
+  "contractABI": "[]"
+}

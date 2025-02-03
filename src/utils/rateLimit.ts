@@ -1,38 +1,41 @@
+// src/utils/rateLimiter.ts
 export class RateLimiter {
-  private requests: number;
-  private interval: number;
-  private queue: Array<() => void> = [];
-  private lastIntervalStart: number = Date.now();
-  private requestCount: number = 0;
+  private timestamps: number[] = [];
+  private readonly limit: number;
+  private readonly interval: number;
 
-  constructor(requests: number, interval: number) {
-    this.requests = requests;
-    this.interval = interval;
+  constructor(limit: number = 10, intervalMs: number = 1000) {
+      this.limit = limit;
+      this.interval = intervalMs;
   }
 
   public async acquire(): Promise<void> {
-    return new Promise((resolve) => {
-      this.queue.push(resolve);
-      this.processQueue();
-    });
+      const now = Date.now();
+      
+      // Nettoyer les anciens timestamps
+      this.timestamps = this.timestamps.filter(t => now - t < this.interval);
+      
+      if (this.timestamps.length >= this.limit) {
+          const oldestTimestamp = this.timestamps[0];
+          const waitTime = this.interval - (now - oldestTimestamp);
+          
+          if (waitTime > 0) {
+              await new Promise(resolve => setTimeout(resolve, waitTime));
+          }
+      }
+      
+      this.timestamps.push(Date.now());
   }
 
-  private processQueue(): void {
-    const now = Date.now();
-    if (now - this.lastIntervalStart > this.interval) {
-      this.lastIntervalStart = now;
-      this.requestCount = 0;
-    }
+  public getRemainingTokens(): number {
+      const now = Date.now();
+      this.timestamps = this.timestamps.filter(t => now - t < this.interval);
+      return this.limit - this.timestamps.length;
+  }
 
-    if (this.requestCount < this.requests && this.queue.length > 0) {
-      this.requestCount++;
-      const resolve = this.queue.shift();
-      if (resolve) {
-        resolve();
+  public async waitForAvailableToken(): Promise<void> {
+      while (this.getRemainingTokens() === 0) {
+          await new Promise(resolve => setTimeout(resolve, 100));
       }
-      this.processQueue();
-    } else {
-      setTimeout(() => this.processQueue(), this.interval - (now - this.lastIntervalStart));
-    }
   }
 }

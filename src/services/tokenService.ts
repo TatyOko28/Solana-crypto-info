@@ -7,219 +7,293 @@ import { validateTokenAddress } from '../utils/validation';
 import { Cache } from '../utils/cache';
 import fs from 'fs/promises';
 
-export class TokenService {
-  private connection: Connection;
-  private tokenInfoCache: Cache<TokenInfo>;
-  private metadataCache: Cache<TokenMetadata | null>;
-  private readonly METADATA_PROGRAM_ID = new PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s');
-
-  constructor() {
-    this.connection = RPCService.getInstance().getConnection();
-    this.tokenInfoCache = new Cache<TokenInfo>(300); // 5 minutes cache
-    this.metadataCache = new Cache<TokenMetadata | null>(600); // 10 minutes cache
-  }
-
-  /**
-   * Get token information including metadata if available
-   * @param address Token mint address
-   * @returns TokenInfo object
-   */
-  async getTokenInfo(address: string): Promise<TokenInfo> {
-    // Check cache first
-    const cached = this.tokenInfoCache.get(address);
-    if (cached) return cached;
-
-    // If not in cache, fetch and cache
-    const tokenInfo = await this.fetchTokenInfo(address);
-    this.tokenInfoCache.set(address, tokenInfo);
-    return tokenInfo;
-  }
-
-  /**
-   * Fetch token information from the blockchain
-   * @param address Token mint address
-   * @returns TokenInfo object
-   */
-  private async fetchTokenInfo(address: string): Promise<TokenInfo> {
-    if (!validateTokenAddress(address)) {
-      throw new Error('Invalid token address');
-    }
-
-    try {
-      const tokenPublicKey = new PublicKey(address);
-      const [mintInfo, metadata] = await Promise.all([
-        getMint(this.connection, tokenPublicKey),
-        this.getTokenMetadata(address)
-      ]);
-
-      return {
-        symbol: metadata?.symbol || 'Unknown',
-        decimals: mintInfo.decimals,
-        metadata: metadata || undefined
-      };
-    } catch (error) {
-      if (error instanceof Error) {
-        throw new Error(`Failed to get token info: ${error.message}`);
-      }
-      throw new Error('Failed to get token info');
-    }
-  }
-
-  /**
-   * Get token metadata if available
-   * @param address Token mint address
-   * @returns TokenMetadata object or null if not found
-   */
-  async getTokenMetadata(address: string): Promise<TokenMetadata | null> {
-    // Check cache first
-    const cached = this.metadataCache.get(address);
-    if (cached !== null) return cached;
-
-    // If not in cache, fetch and cache
-    const metadata = await this.fetchTokenMetadata(address);
-    this.metadataCache.set(address, metadata);
-    return metadata;
-  }
-
-  /**
-   * Fetch token metadata from the blockchain
-   * @param address Token mint address
-   * @returns TokenMetadata object or null if not found
-   */
-  private async fetchTokenMetadata(address: string): Promise<TokenMetadata | null> {
-    try {
-      const tokenPublicKey = new PublicKey(address);
-      const metadataPDA = await this.findMetadataPDA(tokenPublicKey);
-      
-      const accountInfo = await this.connection.getAccountInfo(metadataPDA);
-      
-      if (!accountInfo) {
-        return null;
-      }
-
-      return this.decodeMetadata(accountInfo.data);
-    } catch (error) {
-      console.warn(`Failed to get token metadata: ${error}`);
-      return null;
-    }
-  }
-
-  /**
-   * Find the PDA (Program Derived Address) for token metadata
-   * @param mint Token mint address
-   * @returns PublicKey of the metadata account
-   */
-  private async findMetadataPDA(mint: PublicKey): Promise<PublicKey> {
-    const [pda] = await PublicKey.findProgramAddress(
-      [
-        Buffer.from('metadata'),
-        this.METADATA_PROGRAM_ID.toBytes(),
-        mint.toBytes()
-      ],
-      this.METADATA_PROGRAM_ID
-    );
-    return pda;
-  }
-
-  /**
-   * Decode token metadata from buffer data
-   * @param data Buffer containing metadata
-   * @returns TokenMetadata object
-   */
-  private decodeMetadata(data: Buffer): TokenMetadata {
-    try {
-      const decoder = new TextDecoder();
-      let offset = 0;
-
-      // Skip discriminator (1 byte) and update authority (32 bytes)
-      offset += 1 + 32;
-
-      // Skip mint address (32 bytes)
-      offset += 32;
-
-      // Read name length and data
-      const nameLength = Math.min(data.readUInt32LE(offset), data.length - offset - 4);
-      offset += 4;
-      const name = decoder.decode(data.slice(offset, offset + nameLength));
-      offset += nameLength;
-
-      // Read symbol length and data
-      const symbolLength = Math.min(data.readUInt32LE(offset), data.length - offset - 4);
-      offset += 4;
-      const symbol = decoder.decode(data.slice(offset, offset + symbolLength));
-      offset += symbolLength;
-
-      // Read URI/description length and data
-      const uriLength = Math.min(data.readUInt32LE(offset), data.length - offset - 4);
-      offset += 4;
-      const description = decoder.decode(data.slice(offset, offset + uriLength));
-
-      return {
-        name: name.replace(/\0/g, '').trim(),
-        symbol: symbol.replace(/\0/g, '').trim(),
-        description: description.replace(/\0/g, '').trim()
-      };
-    } catch (error) {
-      // Return default values if decoding fails
-      return {
-        name: 'Unknown Token',
-        symbol: 'UNKNOWN',
-        description: 'Metadata decoding failed'
-      };
-    }
-  }
-
-  /**
-   * Save token information to a JSON file
-   * @param address Token mint address
-   * @param tokenInfo TokenInfo object
-   * @returns Filename where the data was saved
-   */
-  async saveTokenInfoToFile(
-    address: string,
-    tokenInfo: TokenInfo
-  ): Promise<string> {
-    const filename = `token_info_${address}.json`;
-    await fs.writeFile(
-      filename,
-      JSON.stringify(tokenInfo, null, 2),
-      'utf-8'
-    );
-    return filename;
-  }
-
-  /**
-   * Check if a token exists
-   * @param address Token mint address
-   * @returns boolean indicating if token exists
-   */
-  async tokenExists(address: string): Promise<boolean> {
-    try {
-      const tokenPublicKey = new PublicKey(address);
-      const mintInfo = await getMint(this.connection, tokenPublicKey);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  /**
-   * Get token supply
-   * @param address Token mint address
-   * @returns Token supply as string
-   */
-  async getTokenSupply(address: string): Promise<string> {
-    try {
-      const tokenPublicKey = new PublicKey(address);
-      const mintInfo = await getMint(this.connection, tokenPublicKey);
-      return mintInfo.supply.toString();
-    } catch (error) {
-      if (error instanceof Error) {
-        throw new Error(`Failed to get token supply: ${error.message}`);
-      }
-      throw new Error('Failed to get token supply');
-    }
-  }
+// Ajoutez cette interface pour typer la réponse de l'API
+interface TokenListResponse {
+    tokens: {
+        address: string;
+        symbol: string;
+        name: string;
+        decimals: number;
+        logoURI?: string;
+        tags?: string[];
+    }[];
 }
 
-console.log("RPCService instance:", RPCService.getInstance());
+export class TokenService {
+    private connection: Connection;
+    private tokenInfoCache: Cache<TokenInfo>;
+    private metadataCache: Cache<TokenMetadata | null>;
+    private readonly METADATA_PROGRAM_ID = new PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s');
+    private readonly MAX_RETRIES = 3;
+    private readonly RETRY_DELAY = 1000; // 1 second
+
+    constructor() {
+        this.connection = RPCService.getInstance().getConnection();
+        this.tokenInfoCache = new Cache<TokenInfo>(300); // 5 minutes cache
+        this.metadataCache = new Cache<TokenMetadata | null>(600); // 10 minutes cache
+    }
+
+    public async checkHealth(): Promise<number> {
+        try {
+            const blockHeight = await this.connection.getBlockHeight();
+            console.log('Current block height:', blockHeight);
+            return blockHeight;
+        } catch (error) {
+            throw new Error(`Failed to check RPC health: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+    }
+
+    public async getTokenInfo(address: string): Promise<TokenInfo> {
+        try {
+            // Essayez d'abord de récupérer depuis l'API Token List
+            const tokenListInfo = await this.getTokenFromTokenList(address);
+            if (tokenListInfo) {
+                return tokenListInfo;
+            }
+            
+            // Si ce n'est pas dans la liste des tokens, essayez de le récupérer on-chain
+            return await this.getTokenInfoFromChain(address);
+        } catch (error) {
+            console.warn(`Failed to get token info for ${address}, using default values`);
+            return this.getDefaultTokenInfo(address);
+        }
+    }
+
+    private getDefaultTokenInfo(address: string): TokenInfo {
+        return {
+            address,
+            symbol: 'UNKNOWN',
+            decimals: 9,
+            metadata: {
+                name: `Unknown Token (${address.slice(0, 8)}...)`,
+                symbol: 'UNKNOWN',
+                uri: '',
+                description: 'Token information unavailable'
+            }
+        };
+    }
+
+    private async getTokenFromTokenList(address: string): Promise<TokenInfo | null> {
+        try {
+            const response = await fetch('https://cdn.jsdelivr.net/gh/solana-labs/token-list@main/src/tokens/solana.tokenlist.json');
+            const tokenList = await response.json() as TokenListResponse;
+            
+            const token = tokenList.tokens.find(t => t.address === address);
+            if (!token) return null;
+
+            return {
+                address: token.address,
+                symbol: token.symbol,
+                decimals: token.decimals,
+                metadata: {
+                    name: token.name,
+                    symbol: token.symbol,
+                    uri: token.logoURI || '',
+                    description: token.tags?.join(', ') || ''
+                }
+            };
+        } catch (error) {
+            console.warn('Failed to fetch from token list:', error);
+            return null;
+        }
+    }
+
+    private async getTokenInfoFromChain(address: string): Promise<TokenInfo> {
+        try {
+            const tokenPublicKey = new PublicKey(address);
+            const mintInfo = await getMint(this.connection, tokenPublicKey);
+            const metadata = await this.getTokenMetadata(address);
+
+            return {
+                address,
+                symbol: metadata?.symbol || 'Unknown',
+                decimals: mintInfo.decimals,
+                metadata: metadata || undefined,
+                supply: mintInfo.supply.toString(),
+                mintAuthority: mintInfo.mintAuthority?.toString(),
+                freezeAuthority: mintInfo.freezeAuthority?.toString()
+            };
+        } catch (error) {
+            throw new Error(`Failed to get token info from chain: ${error}`);
+        }
+    }
+
+    private async fetchTokenInfo(address: string): Promise<TokenInfo> {
+        if (!validateTokenAddress(address)) {
+            throw new Error('Invalid token address');
+        }
+
+        let retries = this.MAX_RETRIES;
+        while (retries > 0) {
+            try {
+                console.log(`Fetching token info, attempts remaining: ${retries}`);
+                const tokenPublicKey = new PublicKey(address);
+                const mintInfo = await getMint(this.connection, tokenPublicKey);
+                const metadata = await this.getTokenMetadata(address);
+
+                console.log('Token info retrieved successfully');
+                return {
+                    address,
+                    symbol: metadata?.symbol || 'Unknown',
+                    decimals: mintInfo.decimals,
+                    metadata: metadata || undefined,
+                    supply: mintInfo.supply.toString(),
+                    mintAuthority: mintInfo.mintAuthority?.toString(),
+                    freezeAuthority: mintInfo.freezeAuthority?.toString()
+                };
+            } catch (error) {
+                console.error(`Attempt failed (${retries} remaining):`, error);
+                retries--;
+
+                if (retries === 0) {
+                    // Try backup RPC on last attempt
+                    const rpcService = RPCService.getInstance();
+                    const switched = await rpcService.switchToBackupEndpoint();
+                    if (switched) {
+                        this.connection = rpcService.getConnection();
+                        continue;
+                    }
+                    throw error;
+                }
+
+                await new Promise(resolve => setTimeout(resolve, this.RETRY_DELAY));
+            }
+        }
+
+        throw new Error('Failed to fetch token info after all retries');
+    }
+
+    public async getTokenMetadata(address: string): Promise<TokenMetadata | null> {
+        try {
+            console.log(`Getting metadata for token: ${address}`);
+            
+            // Check cache first
+            const cached = this.metadataCache.get(address);
+            if (cached !== null) {
+                console.log('Returning cached metadata');
+                return cached;
+            }
+
+            // If not in cache, fetch and cache
+            const metadata = await this.fetchTokenMetadata(address);
+            this.metadataCache.set(address, metadata);
+            return metadata;
+        } catch (error) {
+            console.warn('Error getting metadata:', error);
+            return null;
+        }
+    }
+
+    private async fetchTokenMetadata(address: string): Promise<TokenMetadata | null> {
+        try {
+            const tokenPublicKey = new PublicKey(address);
+            const metadataPDA = await this.findMetadataPDA(tokenPublicKey);
+            
+            console.log('Fetching account info for metadata PDA:', metadataPDA.toString());
+            const accountInfo = await this.connection.getAccountInfo(metadataPDA);
+            
+            if (!accountInfo) {
+                console.log('No metadata account found');
+                return null;
+            }
+
+            return this.decodeMetadata(accountInfo.data);
+        } catch (error) {
+            console.warn(`Failed to fetch token metadata: ${error}`);
+            return null;
+        }
+    }
+
+    private async findMetadataPDA(mint: PublicKey): Promise<PublicKey> {
+        try {
+            const [pda] = await PublicKey.findProgramAddress(
+                [
+                    Buffer.from('metadata'),
+                    this.METADATA_PROGRAM_ID.toBytes(),
+                    mint.toBytes()
+                ],
+                this.METADATA_PROGRAM_ID
+            );
+            return pda;
+        } catch (error) {
+            throw new Error(`Failed to find metadata PDA: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
+
+    private decodeMetadata(data: Buffer): TokenMetadata {
+        try {
+            const decoder = new TextDecoder();
+            let offset = 1 + 32 + 32; // Skip key(1) + update authority(32) + mint(32)
+
+            // Read lengths first to validate buffer size
+            if (offset + 12 > data.length) {
+                throw new Error('Buffer too small for metadata');
+            }
+
+            // Read name
+            const nameLength = data.readUInt32LE(offset);
+            offset += 4;
+            if (offset + nameLength > data.length) {
+                throw new Error('Invalid name length');
+            }
+            const name = decoder.decode(data.slice(offset, offset + nameLength)).replace(/\0/g, '');
+            offset += nameLength;
+
+            // Read symbol
+            const symbolLength = data.readUInt32LE(offset);
+            offset += 4;
+            if (offset + symbolLength > data.length) {
+                throw new Error('Invalid symbol length');
+            }
+            const symbol = decoder.decode(data.slice(offset, offset + symbolLength)).replace(/\0/g, '');
+            offset += symbolLength;
+
+            // Read URI
+            const uriLength = data.readUInt32LE(offset);
+            offset += 4;
+            if (offset + uriLength > data.length) {
+                throw new Error('Invalid uri length');
+            }
+            const uri = decoder.decode(data.slice(offset, offset + uriLength)).replace(/\0/g, '');
+
+            return {
+                name: name.trim(),
+                symbol: symbol.trim(),
+                uri: uri.trim(),
+                description: uri.trim() // Using URI as description for now
+            };
+        } catch (error) {
+            console.warn('Error decoding metadata:', error);
+            return {
+                name: 'Unknown Token',
+                symbol: 'UNKNOWN',
+                uri: '',
+                description: 'Metadata decoding failed'
+            };
+        }
+    }
+
+    public async saveTokenInfoToFile(address: string, tokenInfo: TokenInfo): Promise<string> {
+        try {
+            const filename = `token_info_${address}.json`;
+            await fs.writeFile(
+                filename,
+                JSON.stringify(tokenInfo, null, 2),
+                'utf-8'
+            );
+            console.log(`Token info saved to ${filename}`);
+            return filename;
+        } catch (error) {
+            throw new Error(`Failed to save token info to file: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
+
+    public async tokenExists(address: string): Promise<boolean> {
+        try {
+            await this.getTokenInfo(address);
+            return true;
+        } catch {
+            return false;
+        }
+    }
+}
