@@ -4,6 +4,7 @@ import { TokenService } from '../src/services/tokenService';
 import { PublicKey } from '@solana/web3.js';
 import { RAYDIUM_V4_POOL_ABI } from '../src/utils/raydiumABI';
 import * as fs from 'fs';
+import { TokenInfo } from '../src/types/token.types';
 
 // Pour les tests, nous utilisons des clés publiques valides.
 // "11111111111111111111111111111111" est l'ID du System Program (valide et 32 caractères en Base58)
@@ -27,10 +28,16 @@ const fakePoolData = {
 };
 
 // Fake token info (ce que retourne TokenService.getTokenInfo)
-const fakeTokenInfo = {
-  symbol: "MOCK",
-  decimals: 6,
-  metadata: { name: "Mock Token", symbol: "MOCK", description: "Mock metadata" }
+const fakeTokenInfo: TokenInfo = {
+  address: 'fakeAddress123',
+  symbol: 'FAKE',
+  decimals: 9,
+  metadata: {
+    name: 'Fake Token',
+    symbol: 'FAKE',
+    uri: 'https://fake.uri',
+    description: 'Fake token for testing'
+  }
 };
 
 // Fake pool account conforme au type AccountInfo<Buffer>

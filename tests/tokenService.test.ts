@@ -1,7 +1,7 @@
-// tests/tokenService.test.ts
 import { TokenService } from '../src/services/tokenService';
 import { RPCService } from '../src/services/rpcService';
 import { PublicKey } from '@solana/web3.js';
+import { TokenInfo, TokenMetadata } from '../src/types/token.types';
 
 describe('TokenService', () => {
   let tokenService: TokenService;
@@ -43,7 +43,7 @@ describe('TokenService', () => {
       expect(result).toHaveProperty('symbol', 'USDC');
       expect(result).toHaveProperty('decimals', 6);
       expect(result).toHaveProperty('metadata');
-      expect(result.metadata).toHaveProperty('name', 'USDC');
+      expect(result.metadata).toHaveProperty('name', 'USD Coin');
     });
 
     it('should throw error for invalid token address', async () => {
@@ -85,12 +85,14 @@ describe('TokenService', () => {
       const mockFs = require('fs/promises');
       mockFs.writeFile = jest.fn().mockResolvedValue(undefined);
 
-      const tokenInfo = {
+      const tokenInfo: TokenInfo = {
+        address: validTokenAddress,
         symbol: 'USDC',
         decimals: 6,
         metadata: {
           name: 'USD Coin',
           symbol: 'USDC',
+          uri: 'https://example.com///',
           description: 'Stablecoin'
         }
       };

@@ -1,4 +1,3 @@
-//src/services/rpcService.ts
 import { Connection, Commitment, PublicKey } from '@solana/web3.js';
 import { RateLimiter } from '../utils/rateLimiter';
 import dotenv from 'dotenv';

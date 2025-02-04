@@ -1,4 +1,3 @@
-// src/utils/cache.ts
 interface CacheEntry<T> {
     data: T;
     timestamp: number;

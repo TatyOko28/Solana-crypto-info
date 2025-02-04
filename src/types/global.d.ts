@@ -1,4 +1,3 @@
-// src/types/global.d.ts
 declare namespace NodeJS {
     interface Global {
       MOCK_TOKEN_DATA: {

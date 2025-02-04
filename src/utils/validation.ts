@@ -1,4 +1,3 @@
-// src/utils/validation.ts
 import { PublicKey } from '@solana/web3.js';
 
 export function validateTokenAddress(address: string): boolean {

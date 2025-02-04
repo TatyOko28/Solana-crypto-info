@@ -1,4 +1,3 @@
-// tests/mocks/connection.mock.ts
 import { PublicKey } from '@solana/web3.js';
 
 export const mockConnection = {
