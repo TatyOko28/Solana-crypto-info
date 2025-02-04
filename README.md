@@ -174,6 +174,5 @@ The tool implements comprehensive error handling for:
 4. Push to the branch (`git push origin feature-branch`)
 5. Create a Pull Request
 
-## License
-MIT License - see LICENSE file for details
+
 
